@@ -174,9 +174,9 @@ class Tiku:
     def init_tiku(self):
         # 仅用于题库初始化, 应该在题库载入后作初始化调用, 随后才可以使用题库
         # 尝试根据配置文件设置提交模式
-        if not self._conf:
+        if self._conf is None:
             self.config_set(self._get_conf())
-        if not self.DISABLE:
+        if not self.DISABLE and self._conf:
             # 设置提交模式
             self.SUBMIT = True if self._conf['submit'] == 'true' else False
             self.COVER_RATE = float(self._conf['cover_rate'])
@@ -201,7 +201,6 @@ class Tiku:
             config.read(self.CONFIG_PATH, encoding="utf8")
             return config['tiku']
         except (KeyError, FileNotFoundError):
-            logger.info("未找到tiku配置, 已忽略题库功能")
             self.DISABLE = True
             return None
         
@@ -249,7 +248,7 @@ class Tiku:
         """
         从配置文件加载题库, 这个配置可以是用户提供, 可以是默认配置文件
         """
-        if not self._conf:
+        if self._conf is None:
             # 尝试从默认配置文件加载
             self.config_set(self._get_conf())
         if self.DISABLE:
@@ -258,9 +257,10 @@ class Tiku:
             cls_name = self._conf['provider']
             if not cls_name:
                 raise KeyError
-        except KeyError:
-            self.DISABLE = True
-            logger.error("未找到题库配置, 已忽略题库功能")
+        except (KeyError, TypeError):
+            if not self.DISABLE:
+                self.DISABLE = True
+                logger.info("未找到题库配置, 已忽略题库功能")
             return self
         # FIXME: Implement using StrEnum instead. This is not only buggy but also not safe
         new_cls = globals()[cls_name]()

@@ -130,7 +130,7 @@ class Chaoxing:
                 if self.account and self.account.username and self.account.password:
                     return self.login(login_with_cookies=False)
                 return {"status": False, "msg": "cookies 已失效，请更新 cookies 或提供账号密码"}
-            logger.info("登录成功...")
+            logger.info("🎉 登录成功!")
             return {"status": True, "msg": "登录成功"}
 
         _session = requests.Session()
@@ -151,7 +151,7 @@ class Chaoxing:
         if resp and resp.json()["status"] == True:
             save_cookies(_session)
             SessionManager.update_cookies()
-            logger.info("登录成功...")
+            logger.info("🎉 登录成功!")
             return {"status": True, "msg": "登录成功"}
         else:
             return {"status": False, "msg": str(resp.json()["msg2"])}
@@ -208,7 +208,7 @@ class Chaoxing:
         }
         _resp = _session.post(_url, headers=_headers, data=_data)
         # logger.trace(f"原始课程列表内容:\n{_resp.text}")
-        logger.info("课程列表读取完毕...")
+        logger.debug("课程列表读取完毕...")
         course_list = decode_course_list(_resp.text)
 
         _interaction_url = "https://mooc2-ans.chaoxing.com/mooc2-ans/visit/interaction"
@@ -223,6 +223,66 @@ class Chaoxing:
             }
             _resp = _session.post(_url, data=_data)
             course_list += decode_course_list(_resp.text)
+            
+        # 尝试获取精准的进度信息 (基于 HAR 抓包分析)
+        if course_list:
+            logger.debug("正在同步精准进度信息...")
+            course_list = self.get_course_progress(course_list)
+            
+        return course_list
+
+    def get_course_progress(self, course_list):
+        """
+        通过 stu-job-info 接口获取精准的课程进度
+        """
+        if not course_list:
+            return course_list
+            
+        _session = SessionManager.get_session()
+        # 构建 clazzPersonStr 格式: clazzId_cpi,clazzId_cpi...
+        clazz_person_list = []
+        for course in course_list:
+            if "clazzId" in course and "cpi" in course:
+                clazz_person_list.append(f"{course['clazzId']}_{course['cpi']}")
+        
+        if not clazz_person_list:
+            return course_list
+            
+        clazz_person_str = ",".join(clazz_person_list)
+        _url = "https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu-job-info"
+        _params = {"clazzPersonStr": clazz_person_str}
+        
+        try:
+            # 增加 Referer 模拟真实请求
+            _headers = {
+                "Referer": "https://mooc2-ans.chaoxing.com/visit/interaction",
+                "X-Requested-With": "XMLHttpRequest"
+            }
+            _resp = _session.get(_url, params=_params, headers=_headers)
+            _json = _resp.json()
+            if _json.get("status"):
+                job_array = _json.get("jobArray", [])
+                # 创建 clazzId 到 progress 的映射
+                progress_map = {}
+                for job in job_array:
+                    clazz_id = str(job["clazzId"])
+                    if job.get("jobCount", 0) > 0:
+                        progress_map[clazz_id] = f"{int(job['jobRate'])}%"
+                    else:
+                        progress_map[clazz_id] = "无任务"
+                
+                # 更新 course_list 中的进度
+                for course in course_list:
+                    clazz_id = str(course["clazzId"])
+                    if clazz_id in progress_map:
+                        course["progress"] = progress_map[clazz_id]
+                    else:
+                        # 如果接口没返回该课程，通常也是没有任务点
+                        course["progress"] = "无任务"
+                        logger.trace(f"课程 [{course['title']}] 未在进度接口中返回，标记为: 无任务")
+        except Exception as e:
+            logger.debug(f"获取课程精准进度失败: {e} (将保留原始解析结果)")
+            
         return course_list
 
     def get_course_point(self, _courseid, _clazzid, _cpi):
@@ -231,7 +291,7 @@ class Chaoxing:
         logger.trace("开始读取课程所有章节...")
         _resp = _session.get(_url)
         # logger.trace(f"原始章节列表内容:\n{_resp.text}")
-        logger.info("课程章节读取成功...")
+        logger.debug("课程章节读取成功...")
         return decode_course_point(_resp.text)
 
     def get_job_list(self, course: dict, point: dict) -> tuple[list[dict], dict]:
@@ -273,7 +333,7 @@ class Chaoxing:
         if not job_list:
             self.study_emptypage(course, point)
         # logger.trace(f"原始任务点列表内容:\n{_resp.text}")
-        logger.info("章节任务点读取成功...")
+        logger.debug("章节任务点读取成功...")
 
         return job_list, job_info
 
@@ -470,9 +530,9 @@ class Chaoxing:
         last_iter = time.time()
         wait_time = int(random.uniform(30, 90))
 
-        logger.info(f"开始任务: {_job['name']}, 总时长: {duration}s, 已进行: {play_time}s")
+        logger.debug(f"开始任务: {_job['name']}, 总时长: {duration}s, 已进行: {play_time}s")
 
-        pbar = tqdm(total=duration, initial=play_time, desc=_job["name"],
+        pbar = tqdm(total=duration, initial=play_time, desc=_job["name"][:20],
                     unit_scale=True, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}')
 
         forbidden_retry = 0
@@ -567,7 +627,8 @@ class Chaoxing:
     def study_work(self, _course, _job, _job_info) -> StudyResult:
         # FIXME: 这一块可以单独搞一个类出来了，方法里面又套方法，每一次调用都会创建新的方法，十分浪费
         if self.tiku.DISABLE or not self.tiku:
-            return StudyResult.SUCCESS
+            logger.warning("未配置题库或题库已禁用，无法自动完成章节测验任务。")
+            return StudyResult.ERROR
         _ORIGIN_HTML_CONTENT = ""  # 用于配合输出网页源码, 帮助修复#391错误
 
         def random_answer(options: str) -> str:

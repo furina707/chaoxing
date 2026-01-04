@@ -20,10 +20,19 @@ def use_cookies() -> dict:
         return {}
 
     cookies={}
-    with open(gc.COOKIES_PATH, "r") as f:
-        buffer = f.read().strip()
-        for item in buffer.split(";"):
-            k, v = item.strip().split("=")
-            cookies[k] = v
+    try:
+        with open(gc.COOKIES_PATH, "r") as f:
+            buffer = f.read().strip()
+            if not buffer:
+                return {}
+            for item in buffer.split(";"):
+                item = item.strip()
+                if not item or "=" not in item:
+                    continue
+                # 使用 partition 确保即使 value 中包含 = 也能正确解析，且不会因为缺少 = 而报错
+                k, _, v = item.partition("=")
+                cookies[k.strip()] = v.strip()
+    except Exception:
+        return {}
 
     return cookies

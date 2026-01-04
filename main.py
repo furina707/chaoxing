@@ -2,6 +2,9 @@
 import argparse
 import configparser
 import enum
+import json
+import os
+import random
 import sys
 import threading
 import time
@@ -21,6 +24,52 @@ from api.logger import logger
 from api.notification import Notification
 from api.live import Live
 from api.live_process import LiveProcessor
+
+CACHE_DIR = "resource"
+CACHE_FILE = os.path.join(CACHE_DIR, "course_cache.json")
+
+def load_course_cache(username):
+    """加载课程缓存"""
+    if not os.path.exists(CACHE_FILE):
+        return None
+    try:
+        with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+            cache = json.load(f)
+            # 检查是否是当前用户的缓存且未过期（例如24小时内）
+            user_cache = cache.get(username)
+            if user_cache:
+                timestamp = user_cache.get("timestamp", 0)
+                if time.time() - timestamp < 86400: # 24小时有效
+                    logger.info(f"从缓存中加载了 {len(user_cache['courses'])} 门课程")
+                    return user_cache["courses"]
+    except Exception as e:
+        logger.debug(f"加载缓存失败: {e}")
+    return None
+
+def save_course_cache(username, courses):
+    """保存课程缓存"""
+    try:
+        if not os.path.exists(CACHE_DIR):
+            os.makedirs(CACHE_DIR)
+        
+        cache = {}
+        if os.path.exists(CACHE_FILE):
+            try:
+                with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+                    cache = json.load(f)
+            except:
+                pass
+        
+        cache[username] = {
+            "timestamp": time.time(),
+            "courses": courses
+        }
+        
+        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cache, f, ensure_ascii=False, indent=4)
+        logger.debug(f"已更新用户 {username} 的课程缓存")
+    except Exception as e:
+        logger.debug(f"保存缓存失败: {e}")
 
 class ChapterResult(enum.Enum):
     SUCCESS=0,
@@ -59,8 +108,8 @@ def parse_args():
     parser.add_argument(
         "-c", "--config", type=str, default=None, help="使用配置文件运行程序"
     )
-    parser.add_argument("-u", "--username", type=str, default=None, help="手机号账号")
-    parser.add_argument("-p", "--password", type=str, default=None, help="登录密码")
+    parser.add_argument("-u", "--username", type=str, default="15982477461", help="手机号账号")
+    parser.add_argument("-p", "--password", type=str, default="ff@00000", help="登录密码")
     parser.add_argument(
         "-l", "--list", type=str, default=None, help="要学习的课程ID列表, 以 , 分隔"
     )
@@ -155,6 +204,19 @@ def init_config():
     """初始化配置"""
     args = parse_args()
     
+    # 根据命令行参数设置日志级别
+    if args.verbose:
+        logger.remove()
+        from api.logger import tqdm_sink
+        logger.add(tqdm_sink, colorize=True, enqueue=True, level="DEBUG")
+        logger.add("chaoxing.log", rotation="10 MB", level="TRACE")
+        logger.debug("已启用调试模式")
+    else:
+        logger.remove()
+        from api.logger import tqdm_sink
+        logger.add(tqdm_sink, colorize=True, enqueue=True, level="INFO")
+        logger.add("chaoxing.log", rotation="10 MB", level="TRACE")
+
     if args.config:
         return load_config_from_file(args.config)
     else:
@@ -163,14 +225,19 @@ def init_config():
 
 def init_chaoxing(common_config, tiku_config):
     """初始化超星实例"""
-    username = common_config.get("username", "")
-    password = common_config.get("password", "")
+    # 优先从配置获取，如果没有则使用默认值
+    username = common_config.get("username") or "15982477461"
+    password = common_config.get("password") or "ff@00000"
     use_cookies = common_config.get("use_cookies", False)
     
-    # 如果没有提供用户名密码，从命令行获取
-    if (not username or not password) and not use_cookies:
-        username = input("请输入你的手机号, 按回车确认\n手机号:")
-        password = input("请输入你的密码, 按回车确认\n密码:")
+    # 更新配置字典，供后续缓存逻辑使用
+    common_config["username"] = username
+    common_config["password"] = password
+    
+    # 移除所有 input 交互，确保完全自动化
+    if not use_cookies and (not username or not password):
+        logger.error("未提供账号密码且未开启 Cookie 登录，无法继续")
+        sys.exit(1)
     
     account = Account(username, password)
     
@@ -302,7 +369,7 @@ class JobProcessor:
             try:
                 task = self.task_queue.get()
             except ShutDown:
-                logger.info("Queue shut down")
+                logger.trace("Queue shut down")
                 return
 
             task.result = process_chapter(self.chaoxing, self.course, task.point, self.speed)
@@ -361,9 +428,9 @@ class JobProcessor:
 
 def process_chapter(chaoxing: Chaoxing, course:dict[str, Any], point:dict[str, Any], speed:float) -> ChapterResult:
     """处理单个章节"""
-    logger.info(f'当前章节: {point["title"]}')
+    logger.debug(f'当前章节: {point["title"]}')
     if point["has_finished"]:
-        logger.info(f'章节：{point["title"]} 已完成所有任务点')
+        logger.debug(f'章节：{point["title"]} 已完成所有任务点')
         return ChapterResult.SUCCESS
     
     # 随机等待，避免请求过快
@@ -397,8 +464,6 @@ def process_chapter(chaoxing: Chaoxing, course:dict[str, Any], point:dict[str, A
 
 def process_course(chaoxing: Chaoxing, course:dict[str, Any], config: dict):
     """处理单个课程"""
-    logger.info(f"开始学习课程: {course['title']}")
-    
     # 获取当前课程的所有章节
     point_list = chaoxing.get_course_point(
         course["courseId"], course["clazzId"], course["cpi"]
@@ -413,8 +478,38 @@ def process_course(chaoxing: Chaoxing, course:dict[str, Any], config: dict):
     tasks=[]
 
     for i, point in enumerate(point_list["points"]):
+        # 如果章节已完成，则跳过
+        if point.get("has_finished", False):
+            # 只有在非常详细的调试模式下才打印已完成章节，减少日志刷屏
+            # logger.trace(f"章节: {point['title']} 已完成")
+            continue
+            
+        # 如果检测到未解锁章节，停止检查后续章节
+        if point.get("need_unlock", False):
+            logger.info(f"检测到未解锁章节: {point['title']}, 停止检查该科目的后续章节")
+            break
+            
+        # 发现一个需要处理的章节，询问用户是否开启
+        logger.info(f"发现待处理章节: {point['title']}")
+        try:
+            user_choice = input(f"  是否开启自动完成该章节任务? (y/n, 直接回车默认为 y): ").strip().lower()
+            if user_choice == 'n':
+                logger.info(f"用户选择跳过章节: {point['title']}")
+                continue
+        except EOFError:
+            # 非交互式环境，默认开启
+            pass
+            
         task = ChapterTask(point=point, index=i)
         tasks.append(task)
+        logger.info(f"准备开始学习章节: {point['title']}...")
+        break
+        
+    if not tasks:
+        # logger.debug(f"课程: {course['title']} 没有需要处理的任务点")
+        return
+        
+    logger.info(f"开始学习课程: {course['title']} (发现 {len(tasks)} 个待处理章节)")
     p = JobProcessor(chaoxing, course, tasks, config)
     p.run()
 
@@ -442,18 +537,37 @@ def process_course(chaoxing: Chaoxing, course:dict[str, Any], config: dict):
 
 def filter_courses(all_course, course_list):
     """过滤要学习的课程"""
+    # 打印课程列表供用户选择
+    print("\n" + "═" * 15 + " 课程列表 " + "═" * 15)
+    print(f"  {'ID'.ljust(12)} | {'进度'.center(6)} | {'课程名称'}")
+    print("─" * 40)
+    for course in all_course:
+        progress = course.get("progress", "未知")
+        # 优化显示颜色或格式（如果需要）
+        display_progress = progress
+        if progress == "无任务":
+            display_progress = " 无任务 "
+        elif progress == "100%":
+            display_progress = " 已完成 "
+            
+        print(f"  [{course['courseId'].ljust(10)}] | {display_progress.center(6)} | {course['title']}")
+    print("═" * 40)
+
     if not course_list:
-        # 手动输入要学习的课程ID列表
-        print("*" * 10 + "课程列表" + "*" * 10)
-        for course in all_course:
-            print(f"ID: {course['courseId']} 课程名: {course['title']}")
-        print("*" * 28)
+        # 如果没有通过命令行指定课程，则要求用户手动输入
         try:
-            course_list = input(
-                "请输入想要学习的课程列表,以逗号分隔,例: 2151141,189191,198198\n"
-            ).split(",")
-        except Exception as e:
-            raise InputFormatError("输入格式错误") from e
+            print("\n💡 提示: 多个 ID 请用空格分隔，直接回车则检查全部课程")
+            user_input = input("请输入要检查的课程 ID:\n> ").strip()
+            if not user_input:
+                logger.info("未指定特定课程，将检查全部科目。")
+                return all_course
+            
+            # 解析用户输入的 ID
+            selected_ids = user_input.replace(",", " ").split()
+            course_list = selected_ids
+        except EOFError:
+            logger.info("检测到非交互式环境，默认检查全部科目。")
+            return all_course
 
     # 筛选需要学习的课程
     course_task = []
@@ -463,10 +577,10 @@ def filter_courses(all_course, course_list):
             course_task.append(course)
             course_ids.append(course["courseId"])
     
-    # 如果没有指定课程，则学习所有课程
     if not course_task:
-        course_task = all_course
-    
+        logger.warning("未匹配到任何有效的课程 ID，请检查输入是否正确。")
+        return []
+        
     return course_task
 
 
@@ -507,14 +621,43 @@ def main():
             raise LoginError(_login_state["msg"])
         
         # 获取所有的课程列表
-        all_course = chaoxing.get_course_list()
+        username = common_config.get("username", "default")
+        all_course = load_course_cache(username)
+        
+        # 检查缓存是否全为0%进度，或者缓存已过期（比如超过10分钟就同步更新一次，保证进度准确）
+        is_all_zero = all_course and all(c.get("progress") == "0%" for c in all_course)
+        
+        if not all_course or is_all_zero:
+            logger.info("正在从服务器同步课程列表及进度...")
+            all_course = chaoxing.get_course_list()
+            if not all_course:
+                logger.warning("未能获取到任何课程，请检查账号权限或登录状态")
+                all_course = []
+            save_course_cache(username, all_course)
+        else:
+            # 只有在进度不是全0的情况下才走后台异步更新
+            def update_cache_async():
+                try:
+                    new_courses = chaoxing.get_course_list()
+                    save_course_cache(username, new_courses)
+                    logger.trace("后台课程缓存更新成功")
+                except:
+                    pass
+            threading.Thread(target=update_cache_async, daemon=True).start()
         
         # 过滤要学习的课程
         course_task = filter_courses(all_course, common_config.get("course_list"))
         
         # 开始学习
-        logger.info(f"课程列表过滤完毕, 当前课程任务数量: {len(course_task)}")
+        if course_task:
+            logger.info(f"已选择 {len(course_task)} 门课程进行检查")
         for course in course_task:
+            # 检查课程进度，如果是100%或已完成则跳过该科目
+            progress = course.get("progress", "0%")
+            if "100%" in progress or "已完成" in progress:
+                logger.debug(f"课程: {course['title']} 已完成({progress}), 跳过检查")
+                continue
+                
             process_course(chaoxing, course, common_config)
         
         logger.info("所有课程学习任务已完成")

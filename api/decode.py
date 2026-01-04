@@ -35,16 +35,73 @@ def decode_course_list(html_text: str) -> List[Dict[str, str]]:
         if course.select_one("a.not-open-tip") or course.select_one("div.not-open-tip"):
             continue
         
+        # 尝试获取进度信息 (多方案兼容)
+        progress = "0%"
+        
+        # 方案0: 优先解析 info 属性中的 JSON 数据 (最准确)
+        info_attr = course.attrs.get("info")
+        if info_attr:
+            try:
+                import json
+                info_json = json.loads(info_attr)
+                # 如果 jobCount 为 0，直接判定为无任务
+                if info_json.get("jobCount") == 0:
+                    progress = "无任务"
+                elif "courseProgress" in info_json:
+                    progress = f"{info_json['courseProgress']}%"
+            except:
+                pass
+        
+        # 如果方案0失败，则尝试其他方案
+        if progress == "0%":
+            # 方案1: 搜索 HTML 中所有的百分比数字
+            course_html = str(course)
+            percent_match = re.search(r"(\d+)%", course_html)
+            if percent_match:
+                progress = f"{percent_match.group(1)}%"
+            else:
+                # 方案2: 搜索 "已完成" 或 "任务点" 格式
+                points_match = re.search(r"(\d+)/(\d+)", course.get_text())
+                if points_match:
+                    done, total = map(int, points_match.groups())
+                    if total > 0:
+                        progress = f"{int(done/total*100)}%"
+                elif "已完成" in course.get_text():
+                    progress = "100%"
+                else:
+                    # 方案3: 传统选择器提取
+                    progress_el = course.select_one("p.colorProgress, span.progress, div.progressbar span, em.colorProgress, span.num2")
+                    if progress_el:
+                        text = progress_el.text.strip()
+                        digits = re.findall(r"\d+", text)
+                        if digits:
+                            progress = f"{digits[0]}%"
+        
+        # 提取 CPI
+        cpi = ""
+        a_tag = course.select_one("a")
+        if a_tag and "href" in a_tag.attrs:
+            cpi_match = re.search(r"cpi=(.*?)($|&)", a_tag.attrs["href"])
+            if cpi_match:
+                cpi = cpi_match.group(1)
+        
+        # 如果从 a 标签没找到，尝试从 curPersonId input 找
+        if not cpi:
+            cpi_input = course.select_one("input.curPersonId")
+            if cpi_input:
+                cpi = cpi_input.attrs.get("value", "")
+
         course_detail = {
             "id": course.attrs["id"],
-            "info": course.attrs["info"],
-            "roleid": course.attrs["roleid"],
+            "info": course.attrs.get("info", ""),
+            "roleid": course.attrs.get("roleid", ""),
             "clazzId": course.select_one("input.clazzId").attrs["value"],
             "courseId": course.select_one("input.courseId").attrs["value"],
-            "cpi": re.findall(r"cpi=(.*?)&", course.select_one("a").attrs["href"])[0],
-            "title": course.select_one("span.course-name").attrs["title"],
-            "desc": course.select_one("p.margint10").attrs["title"] if course.select_one("p.margint10") else "",
-            "teacher": course.select_one("p.color3").attrs["title"]
+            "cpi": cpi,
+            "title": course.select_one("span.course-name").attrs.get("title", ""),
+            "desc": course.select_one("p.margint10").attrs.get("title", "") if course.select_one("p.margint10") else "",
+            "teacher": course.select_one("p.color3").attrs.get("title", "") if course.select_one("p.color3") else "",
+            "progress": progress
         }
         course_list.append(course_detail)
     
@@ -139,7 +196,17 @@ def _extract_points_from_chapter(chapter_unit) -> List[Dict[str, Any]]:
             
         # 判断是否已完成
         is_finished = False
-        if point.select_one("span.bntHoverTips") and "已完成" in point.select_one("span.bntHoverTips").text:
+        hover_tips = point.select_one("span.bntHoverTips")
+        if hover_tips and ("已完成" in hover_tips.text or "任务点已全部完成" in hover_tips.text):
+            is_finished = True
+        # 兜底检查：如果 span.icon 有 class 为 'finish' 或 'complete'
+        icon_el = point.select_one("span.icon")
+        if not is_finished and icon_el:
+            classes = icon_el.get("class", [])
+            if "finish" in classes or "complete" in classes:
+                is_finished = True
+        # 检查文本中是否包含 100%
+        if not is_finished and "100%" in point.text:
             is_finished = True
             
         point_detail = {

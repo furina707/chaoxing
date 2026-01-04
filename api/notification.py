@@ -49,13 +49,12 @@ class NotificationService(ABC):
             config.read(self.CONFIG_PATH, encoding="utf8")
             return config['notification']
         except (KeyError, FileNotFoundError):
-            logger.info("未找到notification配置，已忽略外部通知功能")
             self.disabled = True
             return None
 
     def init_notification(self) -> None:
         """初始化通知服务，加载配置并进行必要的设置"""
-        if not self._conf:
+        if self._conf is None:
             self._conf = self._load_config_from_file()
 
         if not self.disabled and self._conf:
@@ -135,10 +134,15 @@ class DefaultNotification(NotificationService):
         Returns:
             通知服务实例
         """
-        if not self._conf:
+        if self._conf is None:
             self._conf = self._load_config_from_file()
 
         if self.disabled:
+            return self
+
+        if not self._conf:
+            self.disabled = True
+            logger.info("未找到外部通知配置，已忽略外部通知功能")
             return self
 
         try:
@@ -158,9 +162,10 @@ class DefaultNotification(NotificationService):
             service.config_set(self._conf)
             return service
 
-        except KeyError:
-            self.disabled = True
-            logger.info("未找到外部通知配置，已忽略外部通知功能")
+        except (KeyError, TypeError):
+            if not self.disabled:
+                self.disabled = True
+                logger.info("未找到外部通知配置，已忽略外部通知功能")
             return self
 
 
