@@ -1,17 +1,17 @@
 # :computer: 超星学习通自动化完成任务点(命令行版)
 
 <p align="center">
-    <a href="https://github.com/Samueli924/chaoxing" target="_blank" style="margin-right: 20px; font-style: normal; text-decoration: none;">
-        <img src="https://img.shields.io/github/stars/Samueli924/chaoxing" alt="Github Stars" />
+    <a href="https://github.com/furina707/chaoxing" target="_blank" style="margin-right: 20px; font-style: normal; text-decoration: none;">
+        <img src="https://img.shields.io/github/stars/furina707/chaoxing" alt="Github Stars" />
     </a>
-    <a href="https://github.com/Samueli924/chaoxing" target="_blank" style="margin-right: 20px; font-style: normal; text-decoration: none;">
-        <img src="https://img.shields.io/github/forks/Samueli924/chaoxing" alt="Github Forks" />
+    <a href="https://github.com/furina707/chaoxing" target="_blank" style="margin-right: 20px; font-style: normal; text-decoration: none;">
+        <img src="https://img.shields.io/github/forks/furina707/chaoxing" alt="Github Forks" />
     </a>
-    <a href="https://github.com/Samueli924/chaoxing" target="_blank" style="margin-right: 20px; font-style: normal; text-decoration: none;">
-        <img src="https://img.shields.io/github/languages/code-size/Samueli924/chaoxing" alt="Code-size" />
+    <a href="https://github.com/furina707/chaoxing" target="_blank" style="margin-right: 20px; font-style: normal; text-decoration: none;">
+        <img src="https://img.shields.io/github/languages/code-size/furina707/chaoxing" alt="Code-size" />
     </a>
-    <a href="https://github.com/Samueli924/chaoxing" target="_blank" style="margin-right: 20px; font-style: normal; text-decoration: none;">
-        <img src="https://img.shields.io/github/v/release/Samueli924/chaoxing?display_name=tag&sort=semver" alt="version" />
+    <a href="https://github.com/furina707/chaoxing" target="_blank" style="margin-right: 20px; font-style: normal; text-decoration: none;">
+        <img src="https://img.shields.io/github/v/release/furina707/chaoxing?display_name=tag&sort=semver" alt="version" />
     </a>
 </p>
 :muscle: 本项目的最终目的是通过开源消灭所谓的付费刷课平台，希望有能力的朋友都可以为这个项目提交代码，支持本项目的良性发展
@@ -24,7 +24,7 @@
 ## :books: 使用方法
 
 ### 源码运行
-1. `git clone --depth=1 https://github.com/Samueli924/chaoxing` 项目至本地
+1. `git clone --depth=1 https://github.com/furina707/chaoxing` 项目至本地
 2. `cd chaoxing`
 3. `pip install -r requirements.txt` 或者 `pip install .`(通过 pyproject.toml 安装依赖)
 4. (可选直接运行) `python main.py`
@@ -32,7 +32,7 @@
 6. (可选命令行运行)`python main.py -u 手机号 -p 密码 -l 课程ID1,课程ID2,课程ID3...(可选) -a [retry|ask|continue](可选)`
 
 ### 打包文件运行
-1. 从最新[Releases](https://github.com/Samueli924/chaoxing/releases)中下载exe文件
+1. 从最新[Releases](https://github.com/furina707/chaoxing/releases)中下载exe文件
 2. (可选直接运行) 双击运行即可
 3. (可选配置文件运行) 下载config_template.ini文件保存为config.ini文件，修改文件内的账号密码内容, 执行 `./chaoxing.exe -c config.ini`
 4. (可选命令行运行)`./chaoxing.exe -u "手机号" -p "密码" -l 课程ID1,课程ID2,课程ID3...(可选) -a [retry|ask|continue](可选)`

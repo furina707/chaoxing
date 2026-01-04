@@ -99,7 +99,7 @@ def str_to_bool(value):
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(
-        description="Samueli924/chaoxing",
+        description="furina707/chaoxing",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
