@@ -386,6 +386,9 @@ class Chaoxing:
         self.cipher = AESCipher()
         self.tiku = tiku
         self.kwargs = kwargs
+        # 强制刷音视频时长模式：禁用"秒过"，从 0s 起按真实播放节奏上报，
+        # 降低被超星风控（code=18）拦截的概率。参考原仓库 PR #650。
+        self.force_video_time = bool(kwargs.get("force_video_time", False))
         self.rollback_times = 0
         self.rate_limiter = RateLimiter(0.5)  # 其他接口速率限制比较松
         self.video_log_limiter = RateLimiter(2)  # 上报进度极其容易卡验证码，限制2s一次
@@ -636,7 +639,9 @@ class Chaoxing:
                 logger.error(_resp.text)
                 return [], {}
 
-            _job_list, _job_info = decode_course_card(_resp.text)
+            _job_list, _job_info = decode_course_card(
+                _resp.text, force_video_time=self.force_video_time
+            )
             if _job_info.get("notOpen", False):
                 # 直接返回, 节省一次请求
                 logger.info("该章节未开放")
@@ -645,7 +650,7 @@ class Chaoxing:
             job_list += _job_list
             job_info.update(_job_info)
 
-        if not job_list:
+        if not job_list and not point.get("has_finished", False):
             self.study_emptypage(course, point)
 
         logger.trace(f"原始任务点列表内容:\n{_resp.text}")
@@ -875,6 +880,12 @@ class Chaoxing:
                 logger.trace(f"关闭进度条失败: {e}")
         return None
 
+    def _get_wait_time(self) -> int:
+        """获取音视频进度上报的随机等待间隔秒数。"""
+        if self.force_video_time:
+            return 30 + secrets.randbelow(29)   # 30~58s
+        return 30 + secrets.randbelow(61)       # 30~90s
+
     def study_video(self, _course, _job, _job_info, _speed: float = 1.0,
                     _type: Literal["Video", "Audio"] = "Video") -> StudyResult:
         _session = SessionManager.get_session()
@@ -896,30 +907,49 @@ class Chaoxing:
         # Time in the video (can be scaled with the speed factor): duration, play_time, last_log_time, wait_time
 
         duration = int(_video_info["duration"])
-        play_time = int(_job["playTime"]) // 1000
+        # 强制刷时长模式从 0s 起步；默认模式沿用原有的 playTime
+        play_time = 0 if self.force_video_time else int(_job["playTime"]) // 1000
         last_log_time = 0
         last_iter = time.time()
-        wait_time = int(random.uniform(30, 90))
+        wait_time = self._get_wait_time()
 
-        logger.info(f"开始任务: {_job['name']}, 总时长: {duration}s, 已进行: {play_time}s")
+        logger.info(
+            f"开始任务: {_job['name']}, 总时长: {duration}s, 已进行: {play_time}s"
+            + (" [强制刷时长模式]" if self.force_video_time else "")
+        )
+
+        if duration <= 0:
+            logger.info("视频时长为0，跳过: {}", _job['name'])
+            return StudyResult.SUCCESS
 
         forbidden_retry = 0
         max_forbidden_retry = 2
 
-        passed, state = self.video_progress_log(_session, _course, _job, _job_info, _dtoken, duration, duration,
-                                                _type, headers=headers, _isdrag=4)
-        if passed:
-            logger.info("任务瞬间完成: {}", _job['name'])
-            return StudyResult.SUCCESS
+        if not self.force_video_time:
+            # 默认模式：保留原有的"秒过"行为
+            passed, state = self.video_progress_log(_session, _course, _job, _job_info, _dtoken, duration, duration,
+                                                    _type, headers=headers, _isdrag=4)
+            if passed:
+                logger.info("任务瞬间完成: {}", _job['name'])
+                return StudyResult.SUCCESS
+        else:
+            # 强制刷时长模式：禁用秒过，先上报 0s 起始播放心跳（isdrag=0）
+            passed, state = self.video_progress_log(_session, _course, _job, _job_info, _dtoken, duration, 0,
+                                                    _type, headers=headers, _isdrag=0)
+            last_iter = time.time()
 
         pbar = None
+        finished_full_duration = False
+        full_duration_retries = 0
+        max_full_duration_retries = 3
         try:
-            while not passed:
+            while not passed or (self.force_video_time and not finished_full_duration):
                 # Sometimes the last request needs to be sent several times to complete the task
                 if play_time - last_log_time >= wait_time or play_time == duration:
-
+                    # 强制模式：平时 isdrag=0（正常播放心跳），到结尾才用 4（ended）
+                    isdrag_val = (4 if int(play_time) >= duration else 0) if self.force_video_time else 3
                     passed, state = self.video_progress_log(_session, _course, _job, _job_info, _dtoken, duration,
-                                                            int(play_time), _type, headers=headers)
+                                                            int(play_time), _type, _isdrag=isdrag_val, headers=headers)
 
                     if state == 403:
                         if forbidden_retry >= max_forbidden_retry:
@@ -937,7 +967,7 @@ class Chaoxing:
                             _dtoken = refreshed_meta["dtoken"]
                             duration = int(refreshed_meta["duration"])
                             refreshed_play_time = refreshed_meta.get("playTime")
-                            if refreshed_play_time is not None:
+                            if refreshed_play_time is not None and not self.force_video_time:
                                 play_time = int(refreshed_play_time)
 
                             logger.debug("刷新后的令牌: {}, 持续时间: {}, 播放时间: {}", _dtoken, duration, play_time)
@@ -950,7 +980,17 @@ class Chaoxing:
                     elif not passed and state != 200:
                         return StudyResult.ERROR
 
-                    wait_time = int(random.uniform(30, 90))
+                    if self.force_video_time and int(play_time) >= duration and state == 200:
+                        if passed or not _job.get("jobid"):
+                            finished_full_duration = True
+                            passed = True
+                            break
+                        full_duration_retries += 1
+                        if full_duration_retries >= max_full_duration_retries:
+                            logger.warning("已达到完整时长但服务端未确认完成，已重试{}次: {}", full_duration_retries, _job['name'])
+                            return StudyResult.ERROR
+
+                    wait_time = self._get_wait_time()
                     last_log_time = play_time
 
                     logger.trace("Progress logged")

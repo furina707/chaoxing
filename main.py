@@ -114,6 +114,12 @@ def parse_args():
         default=100,
         help="章节学习次数目标总次数 (默认100)",
     )
+    parser.add_argument(
+        "-fvt",
+        "--force-video-time",
+        action="store_true",
+        help="强制刷音视频时长模式：禁用视频秒过，从0s完整模拟播放，降低风控(403)风险",
+    )
 
     # 在解析之前捕获 -h 的行为
     if len(sys.argv) == 2 and sys.argv[1] in {"-h", "--help"}:
@@ -166,6 +172,8 @@ def load_config_from_file(config_path):
             common_config["add_learning_count"] = str_to_bool(common_config["add_learning_count"])
         if "target_count" in common_config:
             common_config["target_count"] = int(common_config["target_count"])
+        if "force_video_time" in common_config:
+            common_config["force_video_time"] = str_to_bool(common_config["force_video_time"])
         if "username" in common_config and common_config["username"] is not None:
             common_config["username"] = common_config["username"].strip()
         if "password" in common_config and common_config["password"] is not None:
@@ -199,6 +207,7 @@ def build_config_from_args(args):
         "retry_interval": args.retry_interval or 1.0,
         "add_learning_count": args.add_learning_count,
         "target_count": args.target_count,
+        "force_video_time": args.force_video_time,
     }
     return common_config, {}, {}
 
@@ -209,6 +218,8 @@ def init_config():
 
     if args.config:
         common_config, tiku_config, notification_config = load_config_from_file(args.config)
+        if args.force_video_time:
+            common_config["force_video_time"] = True
     else:
         common_config, tiku_config, notification_config = build_config_from_args(args)
     return common_config, tiku_config, notification_config, args.config
@@ -264,6 +275,7 @@ def init_chaoxing(common_config, tiku_config, config_path=None):
         query_delay=query_delay,
         work_max_retries=work_max_retries,
         work_redo_enabled=work_redo_enabled,
+        force_video_time=str_to_bool(common_config.get("force_video_time", False)),
     )
 
     return chaoxing
@@ -453,7 +465,7 @@ class JobProcessor:
 def process_chapter(chaoxing: Chaoxing, course: dict[str, Any], point: dict[str, Any], speed: float) -> ChapterResult:
     """处理单个章节"""
     logger.info(f'当前章节: {point["title"]}')
-    if point["has_finished"]:
+    if point["has_finished"] and not getattr(chaoxing, "force_video_time", False):
         logger.info(f'章节：{point["title"]} 已完成所有任务点')
         return ChapterResult.SUCCESS
 

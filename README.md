@@ -85,6 +85,16 @@ uv run --python 3.15 main.py -c config.ini
 >
 > torch 后端体积较大（约 2GB），如果不需要自动验证码识别，可以跳过——遇到验证码时按提示在浏览器端手动完成即可。
 
+> 关于视频上报 403 / 风控拦截（code=18）：  
+> 默认模式采用"秒过"（首包直接上报全时长），容易被超星风控拦截。如果遇到频繁 403、任务点被跳过，可开启**强制刷音视频时长模式**：
+>
+> ```bash
+> python main.py -fvt          # 命令行开启
+> # 或在 config.ini 的 [common] 中设置 force_video_time = true
+> ```
+>
+> 该模式禁用秒过，从 0s 开始按真实节奏（30~58s 随机间隔、isdrag=0 心跳）完整模拟播放，结尾才上报完成，可显著降低风控概率。代价是会按视频实际时长消耗时间。同时建议降低并发（`-j 1~2`）、不要使用高倍速。参考原仓库 [PR #650](https://github.com/Samueli924/chaoxing/pull/650)。
+
 ### 打包文件运行
 1. 从最新[Releases](https://github.com/Samueli924/chaoxing/releases)中下载exe文件
 2. (可选直接运行) 双击运行即可

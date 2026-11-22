@@ -154,12 +154,13 @@ def _extract_points_from_chapter(chapter_unit) -> List[Dict[str, Any]]:
     return point_list
 
 
-def decode_course_card(html_text: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+def decode_course_card(html_text: str, force_video_time: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     解析任务点列表页面，提取任务点信息
     
     Args:
         html_text: 任务点列表页面的HTML内容
+        force_video_time: 强制刷时长模式下保留已完成的音视频任务
         
     Returns:
         任务点列表和任务信息的元组
@@ -186,7 +187,7 @@ def decode_course_card(html_text: str) -> Tuple[List[Dict[str, Any]], Dict[str, 
 
     # 处理所有附件任务
     cards = cards_data.get("attachments", [])
-    job_list = _process_attachment_cards(cards)
+    job_list = _process_attachment_cards(cards, force_video_time=force_video_time)
 
     return job_list, job_info
 
@@ -217,12 +218,26 @@ def _extract_job_info(cards_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _process_attachment_cards(cards: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _is_video_or_audio_card(card: Dict[str, Any]) -> bool:
+    """判断附件卡片是否为视频或音频类型。"""
+    card_type = card.get("type", "").lower()
+    property_data = card.get("property", {}) or {}
+    prop_type = property_data.get("type", "").lower()
+    prop_module = property_data.get("module", "").lower()
+    return (
+        card_type in ("video", "audio")
+        or prop_module in ("insertvideo", "insertaudio")
+        or prop_type in (".mp4", ".mp3", "video", "audio")
+    )
+
+
+def _process_attachment_cards(cards: List[Dict[str, Any]], force_video_time: bool = False) -> List[Dict[str, Any]]:
     """
     处理所有附件任务卡片，强化直播任务识别逻辑
     
     Args:
         cards: 附件任务卡片列表
+        force_video_time: 强制刷时长模式下不跳过已完成的音视频任务
         
     Returns:
         处理后的任务列表
@@ -230,16 +245,24 @@ def _process_attachment_cards(cards: List[Dict[str, Any]]) -> List[Dict[str, Any
     job_list = []
 
     for index, card in enumerate(cards):
-        # 跳过已通过的任务
-        if card.get("isPassed", False):
+        # 跳过已通过的任务（强制刷时长模式下保留音视频任务）
+        if card.get("isPassed", False) and not (force_video_time and _is_video_or_audio_card(card)):
             continue
 
         # 处理无job字段的特殊任务
         if card.get("job") is None:
-            # 尝试识别阅读任务
-            read_job = _process_read_task(card)
-            if read_job:
-                job_list.append(read_job)
+            # 强制刷时长模式下，音视频卡片即使 job=None 也要作为视频任务处理
+            if force_video_time and _is_video_or_audio_card(card):
+                if "otherInfo" in card:
+                    card["otherInfo"] = card["otherInfo"].split("&")[0]
+                video_job = _process_video_task(card)
+                if video_job:
+                    job_list.append(video_job)
+            else:
+                # 尝试识别阅读任务
+                read_job = _process_read_task(card)
+                if read_job:
+                    job_list.append(read_job)
             continue
 
         # 一开始就把超星api的屎山处理掉，不要用一个屎山行为掩盖另一个屎山 (指根据otherInfo中是否有courseId决定url拼接方式😂)
