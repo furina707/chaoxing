@@ -389,6 +389,9 @@ class Chaoxing:
         # 强制刷音视频时长模式：禁用"秒过"，从 0s 起按真实播放节奏上报，
         # 降低被超星风控（code=18）拦截的概率。参考原仓库 PR #650。
         self.force_video_time = bool(kwargs.get("force_video_time", False))
+        # 是否重刷已完成的音视频任务（补观看时长）。默认关闭：
+        # 已看完的课程应正常跳过，避免浪费时间并触发风控。
+        self.replay_finished_video = bool(kwargs.get("replay_finished_video", False))
         self.rollback_times = 0
         self.rate_limiter = RateLimiter(0.5)  # 其他接口速率限制比较松
         self.video_log_limiter = RateLimiter(2)  # 上报进度极其容易卡验证码，限制2s一次
@@ -640,7 +643,7 @@ class Chaoxing:
                 return [], {}
 
             _job_list, _job_info = decode_course_card(
-                _resp.text, force_video_time=self.force_video_time
+                _resp.text, replay_finished_video=self.replay_finished_video
             )
             if _job_info.get("notOpen", False):
                 # 直接返回, 节省一次请求

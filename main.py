@@ -118,7 +118,12 @@ def parse_args():
         "-fvt",
         "--force-video-time",
         action="store_true",
-        help="强制刷音视频时长模式：禁用视频秒过，从0s完整模拟播放，降低风控(403)风险",
+        help="强制刷音视频时长模式：禁用视频秒过，从0s按真实节奏模拟播放，降低风控(403)风险",
+    )
+    parser.add_argument(
+        "--replay-finished-video",
+        action="store_true",
+        help="重刷已完成的音视频任务（补观看时长）。默认关闭：已看完的章节会正常跳过",
     )
 
     # 在解析之前捕获 -h 的行为
@@ -174,6 +179,8 @@ def load_config_from_file(config_path):
             common_config["target_count"] = int(common_config["target_count"])
         if "force_video_time" in common_config:
             common_config["force_video_time"] = str_to_bool(common_config["force_video_time"])
+        if "replay_finished_video" in common_config:
+            common_config["replay_finished_video"] = str_to_bool(common_config["replay_finished_video"])
         if "username" in common_config and common_config["username"] is not None:
             common_config["username"] = common_config["username"].strip()
         if "password" in common_config and common_config["password"] is not None:
@@ -208,6 +215,7 @@ def build_config_from_args(args):
         "add_learning_count": args.add_learning_count,
         "target_count": args.target_count,
         "force_video_time": args.force_video_time,
+        "replay_finished_video": args.replay_finished_video,
     }
     return common_config, {}, {}
 
@@ -220,6 +228,8 @@ def init_config():
         common_config, tiku_config, notification_config = load_config_from_file(args.config)
         if args.force_video_time:
             common_config["force_video_time"] = True
+        if args.replay_finished_video:
+            common_config["replay_finished_video"] = True
     else:
         common_config, tiku_config, notification_config = build_config_from_args(args)
     return common_config, tiku_config, notification_config, args.config
@@ -276,6 +286,7 @@ def init_chaoxing(common_config, tiku_config, config_path=None):
         work_max_retries=work_max_retries,
         work_redo_enabled=work_redo_enabled,
         force_video_time=str_to_bool(common_config.get("force_video_time", False)),
+        replay_finished_video=str_to_bool(common_config.get("replay_finished_video", False)),
     )
 
     return chaoxing
@@ -465,7 +476,9 @@ class JobProcessor:
 def process_chapter(chaoxing: Chaoxing, course: dict[str, Any], point: dict[str, Any], speed: float) -> ChapterResult:
     """处理单个章节"""
     logger.info(f'当前章节: {point["title"]}')
-    if point["has_finished"] and not getattr(chaoxing, "force_video_time", False):
+    # 已完成的章节直接跳过（即使开启了 -fvt，-fvt 只改变未完成视频的上报方式）
+    # 若要重刷已完成课程的观看时长，请显式开启 replay_finished_video
+    if point["has_finished"] and not getattr(chaoxing, "replay_finished_video", False):
         logger.info(f'章节：{point["title"]} 已完成所有任务点')
         return ChapterResult.SUCCESS
 

@@ -39,8 +39,14 @@ class ForceVideoTimeDecodeTest(unittest.TestCase):
     def test_default_skips_passed(self):
         self.assertEqual(len(_process_attachment_cards(self._sample_cards())), 0)
 
-    def test_force_keeps_audio_video_only(self):
-        jobs = _process_attachment_cards(self._sample_cards(), force_video_time=True)
+    def test_force_video_time_alone_still_skips_passed(self):
+        """仅开启 -fvt 时，已完成的音视频仍应被跳过（不重刷）。"""
+        jobs = _process_attachment_cards(self._sample_cards(), replay_finished_video=False)
+        self.assertEqual(len(jobs), 0)
+
+    def test_replay_keeps_audio_video_only(self):
+        """显式开启重刷时，才保留已完成的音视频任务。"""
+        jobs = _process_attachment_cards(self._sample_cards(), replay_finished_video=True)
         self.assertEqual(len(jobs), 2)
         self.assertTrue(all(j["type"] == "video" for j in jobs))
 
@@ -51,6 +57,13 @@ class ForceVideoTimeConfigTest(unittest.TestCase):
 
     def test_enabled(self):
         self.assertTrue(Chaoxing(force_video_time=True).force_video_time)
+
+    def test_replay_default_off(self):
+        """重刷已完成音视频默认关闭。"""
+        self.assertFalse(Chaoxing(force_video_time=True).replay_finished_video)
+
+    def test_replay_enabled(self):
+        self.assertTrue(Chaoxing(replay_finished_video=True).replay_finished_video)
 
     def test_wait_time_range(self):
         c = Chaoxing(force_video_time=True)
