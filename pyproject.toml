@@ -8,13 +8,10 @@ requires-python = ">=3.15,<4.0"
 dynamic = ["dependencies"]
 
 [project.optional-dependencies]
-# 自动验证码识别（OCR）可选依赖：
-# - Python <=3.14：安装 ddddocr（走 onnxruntime 后端）
-# - Python >=3.15：onnxruntime 无 cp315 wheel，改用 torch 后端：
-#     pip install ddddocr --no-deps
-#     pip install ".[ocr]"
+# 自动验证码识别（OCR）可选依赖：项目内置 ONNX 模型与字符集，
+# 使用 torch 后端推理，不依赖 ddddocr / onnxruntime。
+# 启用方式：pip install ".[ocr]"
 ocr = [
-    "ddddocr>=1.6.1; python_version < '3.15'",
     "torch>=2.5",
     "onnx>=1.16",
     "onnx2torch>=1.5",

@@ -2,7 +2,7 @@
 Captcha API for Chaoxing
 
 本模块用于通过CX验证码，提供包括验证码获取、识别、验证等接口。
-使用了开源的验证码识别库[DdddOcr](https://github.com/sml2h3/ddddocr)
+自动识别使用内置的 PyTorch 后端（api/torch_ocr），不依赖 ddddocr/onnxruntime。
 
 Author: skreon
 Email: 1340554713@qq.com
@@ -19,40 +19,27 @@ from typing import Optional
 from loguru import logger
 from requests import session
 
-try:
-    from ddddocr import DdddOcr
-
-    HAS_DDDDOCR = True
-except ImportError:
-    DdddOcr = None
-    HAS_DDDDOCR = False
-
-# Python 3.15+ 下 ddddocr 依赖的 onnxruntime 无 cp315 wheel，无法导入；
-# 此时改用基于 torch 的兼容后端（api.torch_ocr），无需 onnxruntime。
+# 自动验证码识别使用内置的 torch 后端（api/torch_ocr），不依赖 ddddocr/onnxruntime。
+# 导入失败不影响主程序，仅使自动识别不可用（转为浏览器端手动验证）。
 try:
     from .torch_ocr import TorchDdddOcr
 except ImportError:
     TorchDdddOcr = None
 
 
-def ocr_init() -> Optional[DdddOcr]:
+def ocr_init() -> Optional[TorchDdddOcr]:
     """
-    初始化OCR对象
+    初始化 OCR 对象。
 
-    Returns: DdddOcr对象（或兼容后端）
+    Returns: 已初始化的 OCR 后端对象；不可用时返回 None
     """
-    if HAS_DDDDOCR:
-        try:
-            return DdddOcr(show_ad=False)
-        except Exception as e:
-            logger.warning(f"ddddocr 初始化失败: {e}，尝试 torch 后端")
     if TorchDdddOcr is not None:
         try:
             return TorchDdddOcr()
         except Exception as e:
             logger.warning(f"torch OCR 初始化失败: {e}，自动验证码识别将不可用")
     else:
-        logger.warning("未检测到 ddddocr 依赖，自动验证码识别将不可用。如遇403限制请在浏览器端手动完成验证。")
+        logger.warning("未安装 OCR 可选依赖（torch/onnx2torch），自动验证码识别将不可用。如遇403限制请在浏览器端手动完成验证。")
     return None
 
 
@@ -64,7 +51,7 @@ class CxCaptcha:
     CxCaptcha 类用于处理学习任务中出现的验证码
 
     该类提供了获取、识别和提交验证码的方法，使用 requests 库进行 HTTP 请求，
-    并利用 DdddOcr 进行验证码识别。
+    并利用内置的 torch 后端进行验证码识别。
 
     Attributes:
         host (str): 超星平台的主机地址。
@@ -80,14 +67,14 @@ class CxCaptcha:
         'submit': '/html/processVerify.ac'
     }
 
-    def __init__(self, user_agent: str, cookies: str, ocr: Optional[DdddOcr] = _MISSING):
+    def __init__(self, user_agent: str, cookies: str, ocr: Optional[TorchDdddOcr] = _MISSING):
         """
         初始化 CxCaptcha 实例。
 
         Args:
             user_agent (str): 用户代理字符串。
             cookies (str): 会话 cookies。
-            ocr (DdddOcr, optional): 已初始化的 DdddOcr 对象。如果未提供则自动初始化；如果显式传入 None 则禁用 OCR。据DdddOcr官方说明，每次初始化和初始化后的首次识别速度都非常慢，所以推荐传入一个现成的DdddOcr对象实现复用。
+            ocr (TorchDdddOcr, optional): 已初始化的 OCR 对象。如果未提供则自动初始化；如果显式传入 None 则禁用 OCR。首次初始化较慢，推荐复用同一对象。
         """
 
         self.user_agent = user_agent
@@ -142,7 +129,7 @@ class CxCaptcha:
 
     def recognition(self, img: bytes) -> str:
         """
-        使用 DdddOcr 对验证码图片进行识别。
+        使用内置 torch 后端对验证码图片进行识别。
 
         Args:
             img (bytes): 验证码图片的二进制数据.
@@ -151,8 +138,8 @@ class CxCaptcha:
             str: 返回识别出的验证码字符串。
         """
         if not self.ocr:
-            logger.error("ddddocr 实例未成功初始化，无法执行验证码识别")
-            raise RuntimeError("ddddocr is not available")
+            logger.error("OCR 实例未成功初始化，无法执行验证码识别")
+            raise RuntimeError("OCR backend is not available")
         res = self.ocr.classification(img)
         return res
 

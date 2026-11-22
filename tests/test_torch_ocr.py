@@ -11,7 +11,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from api.captcha import HAS_DDDDOCR, ocr_init  # noqa: E402
+from api.captcha import ocr_init  # noqa: E402
 
 
 @unittest.skipIf(sys.version_info < (3, 15), "仅 Python 3.15+ 使用 torch 后端")
@@ -20,7 +20,7 @@ class TorchOcrBackendTest(unittest.TestCase):
         """3.15 下应能初始化 torch OCR 后端（若已安装可选依赖）。"""
         ocr = ocr_init()
         if ocr is None:
-            self.skipTest("未安装 torch OCR 可选依赖（torch/onnx2torch/ddddocr[--no-deps]）")
+            self.skipTest("未安装 torch OCR 可选依赖（torch/onnx2torch）")
         self.assertEqual(type(ocr).__name__, "TorchDdddOcr")
 
     def test_classification_returns_string(self):
