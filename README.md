@@ -39,6 +39,11 @@ pip install -r requirements.txt
 ```
 或使用 `pip install .`（通过 pyproject.toml 安装依赖）
 
+> 关于代理：程序启动时会检测系统代理。若检测到本地代理（如 Clash/V2Ray 的
+> `http://127.0.0.1:7897`），会自动绕过（`NO_PROXY=*`）让请求直连超星，
+> 避免验证码接口被代理拦截返回 404。如需强制保留代理，可设置环境变量
+> `CHAOXING_USE_PROXY=1`；也可自行设置 `NO_PROXY` 覆盖默认行为。
+
 3. (可选直接运行)
 
 ```bash

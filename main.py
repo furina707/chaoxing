@@ -9,10 +9,16 @@ import traceback
 from dataclasses import dataclass
 from typing import Any
 from tqdm import tqdm
+
+from api.logger import logger
+
+# 必须在 requests/httpx 相关模块导入前处理代理，避免请求被本地代理拦截。
+from api.network import setup_proxy
+setup_proxy(logger)
+
 from api.answer import Tiku
 from api.base import Chaoxing, Account, StudyResult
 from api.exceptions import LoginError, InputFormatError
-from api.logger import logger
 from api.notification import Notification
 from api.live import Live
 from api.live_process import LiveProcessor
