@@ -489,9 +489,16 @@ def process_chapter(chaoxing: Chaoxing, course: dict[str, Any], point: dict[str,
         result = process_job(chaoxing, course, job, job_info, speed)
         job_results.append(result)
 
-    for result in job_results:
-        if result.is_failure():
-            return ChapterResult.ERROR
+    # 被超星风控拦截(code=18)的任务不计入失败：
+    # 该任务点已被服务端标记，重试只会持续触发 403 并加深风控，直接跳过等待冷却。
+    real_failures = [r for r in job_results if r.is_failure() and r != StudyResult.FORBIDDEN]
+    if any(r == StudyResult.FORBIDDEN for r in job_results):
+        logger.warning(
+            "章节 {} 存在被风控拦截的任务点(code=18)，已跳过该任务；"
+            "建议稍后冷却或更换网络后重试。".format(point["title"])
+        )
+    if real_failures:
+        return ChapterResult.ERROR
 
     return ChapterResult.SUCCESS
 
