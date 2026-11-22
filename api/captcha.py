@@ -89,6 +89,14 @@ class CxCaptcha:
 
         self.ocr = ocr_init() if ocr is _MISSING else ocr
 
+    # 超星历史上换过验证码接口，按顺序尝试，取第一个返回图片的。
+    _GET_ENDPOINTS = [
+        '/processVerifyPng.ac',
+        '/mooc-ans/processVerifyPng.ac',
+        '/mooc-ans/verify/processVerifyPng.ac',
+        '/verify/processVerifyPng.ac',
+    ]
+
     def getCaptcha(self) -> Optional[bytes]:
         """
         获取验证码图片。
@@ -96,17 +104,20 @@ class CxCaptcha:
         Returns:
             Optional[bytes]: 返回验证码图片的二进制数据，如果获取失败则返回 None。
         """
-        api = self.host + self.api['get']
         random_t = randint(0, 2147483647)
-
-        res = self.s.get(api, params={'t': random_t})
-        ctype = res.headers.get('Content-Type', '')
-        if res.status_code == 200 and 'image' in ctype:
-            return res.content
-        else:
-            # 提供的Cookies或UA存在问题，导致未能正常获取验证码内容
-            logger.warning(f"验证码图片获取异常: status={res.status_code}, Content-Type={ctype!r}, body={res.content[:100]!r}")
-            return None
+        last_err = None
+        for endpoint in self._GET_ENDPOINTS:
+            api = self.host + endpoint
+            try:
+                res = self.s.get(api, params={'t': random_t})
+                ctype = res.headers.get('Content-Type', '')
+                if res.status_code == 200 and 'image' in ctype:
+                    return res.content
+                last_err = f"status={res.status_code}, Content-Type={ctype!r}, body={res.content[:80]!r}"
+            except Exception as e:
+                last_err = f"异常: {e}"
+        logger.warning(f"验证码图片获取失败（已尝试 {len(self._GET_ENDPOINTS)} 个接口）: {last_err}")
+        return None
 
     def submitCaptcha(self, cap_token: str) -> bool:
         """

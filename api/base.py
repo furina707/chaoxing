@@ -721,6 +721,14 @@ class Chaoxing:
             res = _session.get(_url, params=params, headers=headers)
             if res.status_code == 403 or '验证码' in res.text or 'validate' in res.text:
                 logger.warning("检测到验证码拦截，正在尝试自动通过验证码...")
+                # 诊断：保存拦截页面，便于分析当前使用的验证码接口/流程
+                try:
+                    import os as _os
+                    _dbg = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "captcha_403_debug.html")
+                    with open(_dbg, "w", encoding="utf-8", errors="replace") as _f:
+                        _f.write(f"URL: {res.url}\nSTATUS: {res.status_code}\nHEADERS: {dict(res.headers)}\n\n{res.text}")
+                except Exception:
+                    pass
                 try:
                     from api.captcha import CxCaptcha
                     cookies_str = "; ".join([f"{k}={v}" for k, v in _session.cookies.items()])
