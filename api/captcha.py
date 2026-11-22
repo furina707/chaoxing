@@ -100,10 +100,12 @@ class CxCaptcha:
         random_t = randint(0, 2147483647)
 
         res = self.s.get(api, params={'t': random_t})
-        if res.status_code == 200 and res.headers['Content-Type'] == 'image/png':
+        ctype = res.headers.get('Content-Type', '')
+        if res.status_code == 200 and 'image' in ctype:
             return res.content
         else:
             # 提供的Cookies或UA存在问题，导致未能正常获取验证码内容
+            logger.warning(f"验证码图片获取异常: status={res.status_code}, Content-Type={ctype!r}, body={res.content[:100]!r}")
             return None
 
     def submitCaptcha(self, cap_token: str) -> bool:
@@ -155,9 +157,13 @@ class CxCaptcha:
         try:
             cap_img = self.getCaptcha()
             if not cap_img:
+                logger.warning("验证码图片获取失败（cookies/UA 可能失效）")
                 return False
             cap_token = self.recognition(cap_img)
-            return self.submitCaptcha(cap_token)
+            logger.debug(f"验证码识别结果: {cap_token!r}")
+            ok = self.submitCaptcha(cap_token)
+            logger.debug(f"验证码提交结果: {ok}")
+            return ok
         except Exception as e:
             logger.error(f"验证码自动验证时发生异常: {e}")
             return False
