@@ -12,5 +12,7 @@ tqdm>=4.67.1
 httpx[socks]>=0.28.1
 urllib3>=2.5.0
 chardet>=3.0.2,<6.0.0
-ddddocr>=1.6.1
+# ddddocr 依赖 onnxruntime，后者目前最高只提供到 cp314 的 wheel，
+# 因此 Python 3.15+ 下无法安装；captcha.py 已做缺失降级处理（转为手动验证码）。
+ddddocr>=1.6.1; python_version < "3.15"
 tenacity>=8.2.0

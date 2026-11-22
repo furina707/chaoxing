@@ -23,7 +23,7 @@
 
 ## :books: 使用方法
 
-### 源码运行（Python 3.13+）
+### 源码运行（Python 3.15+）
 
 1. clone 项目至本地
 
@@ -63,13 +63,16 @@ python main.py -u 手机号 -p 密码 -l 课程ID1,课程ID2,课程ID3...(可选
 > 如果已安装低版本 Python 推荐使用 `uv` 运行：
 
 ```bash
-uv run --python 3.13 main.py
+uv run --python 3.15 main.py
 ```
 
 使用配置文件运行 ：
 ```bash
-uv run --python 3.13 main.py -c config.ini
+uv run --python 3.15 main.py -c config.ini
 ```
+
+> 关于自动验证码识别（ddddocr）：  
+> ddddocr 依赖的 onnxruntime 目前最高只提供到 Python 3.14 的 wheel，因此 Python 3.15 下无法安装，自动验证码识别不可用（遇到验证码时请按提示在浏览器端手动完成）。如需启用自动识别，请使用 Python 3.14 或更低版本，并执行 `pip install ".[ocr]"`。
 
 ### 打包文件运行
 1. 从最新[Releases](https://github.com/Samueli924/chaoxing/releases)中下载exe文件

@@ -4,8 +4,13 @@ version = "3.1.3"
 description = "超星学习通/超星尔雅/泛雅超星全自动无人值守完成任务点"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.13,<4.0"
+requires-python = ">=3.15,<4.0"
 dynamic = ["dependencies"]
+
+[project.optional-dependencies]
+# ddddocr 依赖 onnxruntime，后者暂无 cp315 wheel；如需自动验证码识别，
+# 请使用 Python <=3.14 并安装：pip install ".[ocr]"
+ocr = ["ddddocr>=1.6.1"]
 
 [tool.setuptools]
 py-modules = []
