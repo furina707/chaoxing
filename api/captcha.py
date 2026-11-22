@@ -27,21 +27,33 @@ except ImportError:
     DdddOcr = None
     HAS_DDDDOCR = False
 
+# Python 3.15+ 下 ddddocr 依赖的 onnxruntime 无 cp315 wheel，无法导入；
+# 此时改用基于 torch 的兼容后端（api.torch_ocr），无需 onnxruntime。
+try:
+    from .torch_ocr import TorchDdddOcr
+except ImportError:
+    TorchDdddOcr = None
+
 
 def ocr_init() -> Optional[DdddOcr]:
     """
     初始化OCR对象
 
-    Returns: DdddOcr对象
+    Returns: DdddOcr对象（或兼容后端）
     """
-    if not HAS_DDDDOCR:
+    if HAS_DDDDOCR:
+        try:
+            return DdddOcr(show_ad=False)
+        except Exception as e:
+            logger.warning(f"ddddocr 初始化失败: {e}，尝试 torch 后端")
+    if TorchDdddOcr is not None:
+        try:
+            return TorchDdddOcr()
+        except Exception as e:
+            logger.warning(f"torch OCR 初始化失败: {e}，自动验证码识别将不可用")
+    else:
         logger.warning("未检测到 ddddocr 依赖，自动验证码识别将不可用。如遇403限制请在浏览器端手动完成验证。")
-        return None
-    try:
-        return DdddOcr(show_ad=False)
-    except Exception as e:
-        logger.warning(f"ddddocr 初始化失败: {e}，自动验证码识别将不可用")
-        return None
+    return None
 
 
 _MISSING = object()

@@ -71,8 +71,18 @@ uv run --python 3.15 main.py
 uv run --python 3.15 main.py -c config.ini
 ```
 
-> 关于自动验证码识别（ddddocr）：  
-> ddddocr 依赖的 onnxruntime 目前最高只提供到 Python 3.14 的 wheel，因此 Python 3.15 下无法安装，自动验证码识别不可用（遇到验证码时请按提示在浏览器端手动完成）。如需启用自动识别，请使用 Python 3.14 或更低版本，并执行 `pip install ".[ocr]"`。
+> 关于自动验证码识别（OCR）：  
+> ddddocr 依赖的 onnxruntime 目前最高只提供到 Python 3.14 的 wheel。
+>
+> - **Python 3.14 及以下**：直接安装即可，`pip install ".[ocr]"`
+> - **Python 3.15+**：自动识别改用基于 PyTorch 的后端（`api/torch_ocr.py`），无需 onnxruntime。需先安装 ddddocr 的模型文件（跳过其依赖），再安装 OCR 可选依赖：
+>
+> ```bash
+> pip install ddddocr --no-deps
+> pip install ".[ocr]"
+> ```
+>
+> torch 后端体积较大（约 2GB），如果不需要自动验证码识别，可以跳过以上步骤——遇到验证码时按提示在浏览器端手动完成即可。
 
 ### 打包文件运行
 1. 从最新[Releases](https://github.com/Samueli924/chaoxing/releases)中下载exe文件

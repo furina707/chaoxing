@@ -8,9 +8,19 @@ requires-python = ">=3.15,<4.0"
 dynamic = ["dependencies"]
 
 [project.optional-dependencies]
-# ddddocr 依赖 onnxruntime，后者暂无 cp315 wheel；如需自动验证码识别，
-# 请使用 Python <=3.14 并安装：pip install ".[ocr]"
-ocr = ["ddddocr>=1.6.1"]
+# 自动验证码识别（OCR）可选依赖：
+# - Python <=3.14：安装 ddddocr（走 onnxruntime 后端）
+# - Python >=3.15：onnxruntime 无 cp315 wheel，改用 torch 后端：
+#     pip install ddddocr --no-deps
+#     pip install ".[ocr]"
+ocr = [
+    "ddddocr>=1.6.1; python_version < '3.15'",
+    "torch>=2.5",
+    "onnx>=1.16",
+    "onnx2torch>=1.5",
+    "Pillow",
+    "numpy",
+]
 
 [tool.setuptools]
 py-modules = []
