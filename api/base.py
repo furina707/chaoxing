@@ -907,7 +907,6 @@ class Chaoxing:
         # Time in the video (can be scaled with the speed factor): duration, play_time, last_log_time, wait_time
 
         duration = int(_video_info["duration"])
-        # 强制刷时长模式从 0s 起步；默认模式沿用原有的 playTime
         play_time = 0 if self.force_video_time else int(_job["playTime"]) // 1000
         last_log_time = 0
         last_iter = time.time()
