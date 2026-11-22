@@ -719,16 +719,24 @@ class Chaoxing:
         def perform_request(rt_val):
             params.update({"rt": rt_val, "_t": get_timestamp()})
             res = _session.get(_url, params=params, headers=headers)
-            if res.status_code == 403 or '验证码' in res.text or 'validate' in res.text:
+            _body = res.text or ''
+            # 区分两类拦截：
+            # 1) 风控/权限拦截：code=18 / 9011 / 没有权限访问 —— 账号或IP被风控，验证码流程无效
+            # 2) 真正的验证码拦截：页面含 processVerify / 验证码 / validate 等特征
+            _is_risk_block = (
+                'code=18' in _body or '9011' in _body or '没有权限访问' in _body
+            )
+            _is_captcha = (
+                'processVerify' in _body or '验证码' in _body
+                or 'validate' in _body.lower() or 'checkCode' in _body
+            )
+            if _is_risk_block:
+                logger.warning(
+                    "检测到超星风控拦截（code=18，账号/IP 被限制访问），"
+                    "非验证码问题。建议：降低并发数(-j)、降低倍速、更换网络或稍后重试。"
+                )
+            elif res.status_code == 403 or _is_captcha:
                 logger.warning("检测到验证码拦截，正在尝试自动通过验证码...")
-                # 诊断：保存拦截页面，便于分析当前使用的验证码接口/流程
-                try:
-                    import os as _os
-                    _dbg = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "captcha_403_debug.html")
-                    with open(_dbg, "w", encoding="utf-8", errors="replace") as _f:
-                        _f.write(f"URL: {res.url}\nSTATUS: {res.status_code}\nHEADERS: {dict(res.headers)}\n\n{res.text}")
-                except Exception:
-                    pass
                 try:
                     from api.captcha import CxCaptcha
                     cookies_str = "; ".join([f"{k}={v}" for k, v in _session.cookies.items()])
@@ -792,11 +800,18 @@ class Chaoxing:
             return resp.json()["isPassed"], 200
 
         elif resp.status_code == 403:
-            logger.debug(
-                "视频进度上报返回403, jobid={}, 摘要={}",
-                _job.get("jobid"),
-                resp.text[:200],
-            )
+            _rb = resp.text or ''
+            if 'code=18' in _rb or '9011' in _rb or '没有权限访问' in _rb:
+                logger.warning(
+                    "视频进度上报被风控拦截（code=18）：账号/IP 被超星限制。"
+                    "建议降低并发(-j 1~2)、降低倍速或更换网络，稍后再试。"
+                )
+            else:
+                logger.debug(
+                    "视频进度上报返回403, jobid={}, 摘要={}",
+                    _job.get("jobid"),
+                    resp.text[:200],
+                )
 
             # 若出现两个rt参数都返回403的情况, 则跳过当前任务
             logger.error("出现403报错, 尝试修复无效, 正在跳过当前任务点...")
