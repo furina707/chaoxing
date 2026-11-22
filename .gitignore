@@ -157,3 +157,4 @@ cache.json
 start*.bat
 .workbuddy/
 myConfig/
+captcha_403_debug.html
