@@ -46,10 +46,18 @@ class SessionManager:
         return cls._instance
 
     def __init__(self):
+        from urllib3.util.retry import Retry
         self._session = requests.Session()
-        self._session.mount("https://", HTTPAdapter(max_retries=10))
-        self._session.mount("http://", HTTPAdapter(max_retries=10))
-        self._session.request = functools.partial(self._session.request, timeout=5)
+        # 网络抖动(连接/读取超时)时自动重试，避免因一次超时直接退出
+        _retry = Retry(
+            total=5, connect=5, read=5, status=5, backoff_factor=0.5,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=frozenset(["GET", "POST"]),
+            raise_on_status=False,
+        )
+        self._session.mount("https://", HTTPAdapter(max_retries=_retry))
+        self._session.mount("http://", HTTPAdapter(max_retries=_retry))
+        self._session.request = functools.partial(self._session.request, timeout=15)
         # For debug purposes
         # self._session.verify=False
         self._session.headers.clear()
