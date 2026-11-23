@@ -554,26 +554,11 @@ def process_course(chaoxing: Chaoxing, course: dict[str, Any], config: dict):
 
 
 def filter_courses(all_course, course_list):
-    """过滤要学习的课程"""
+    """过滤要学习的课程（未指定时默认全选，不再交互输入）"""
     if not course_list:
-        # 手动输入要学习的课程ID列表
-        print("*" * 10 + "课程列表" + "*" * 10)
-        for course in all_course:
-            print(f"ID: {course['courseId']} 班级ID: {course['clazzId']} 课程名: {course['title']}")
-        print("*" * 28)
-        print("提示: 同一 courseId 下若存在多个班级, 将分别完成。")
-        try:
-            raw = input(
-                "请输入想要学习的课程列表,以逗号分隔,例: 2151141,189191,198198\n"
-                "（直接回车 = 全选所有课程）\n"
-            ).strip()
-        except Exception as e:
-            raise InputFormatError("输入格式错误") from e
-        if not raw:
-            # 直接回车默认全选所有课程
-            logger.info("未指定课程，默认学习全部课程（已完成的章节会自动跳过）")
-            return all_course
-        course_list = [item.strip() for item in raw.split(",") if item.strip()]
+        # 未通过 -l / 配置文件指定课程时，直接全选所有课程
+        logger.info("未指定课程，默认学习全部课程（共 {} 门，已完成的章节会自动跳过）", len(all_course))
+        return all_course
 
     # 筛选需要学习的课程
     course_task = []
