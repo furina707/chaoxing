@@ -563,11 +563,17 @@ def filter_courses(all_course, course_list):
         print("*" * 28)
         print("提示: 同一 courseId 下若存在多个班级, 将分别完成。")
         try:
-            course_list = input(
+            raw = input(
                 "请输入想要学习的课程列表,以逗号分隔,例: 2151141,189191,198198\n"
-            ).split(",")
+                "（直接回车 = 全选所有课程）\n"
+            ).strip()
         except Exception as e:
             raise InputFormatError("输入格式错误") from e
+        if not raw:
+            # 直接回车默认全选所有课程
+            logger.info("未指定课程，默认学习全部课程（已完成的章节会自动跳过）")
+            return all_course
+        course_list = [item.strip() for item in raw.split(",") if item.strip()]
 
     # 筛选需要学习的课程
     course_task = []
