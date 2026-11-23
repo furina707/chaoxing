@@ -125,6 +125,12 @@ def parse_args():
         action="store_true",
         help="重刷已完成的音视频任务（补观看时长）。默认关闭：已看完的章节会正常跳过",
     )
+    parser.add_argument(
+        "--request-interval",
+        type=float,
+        default=2.0,
+        help="全局请求最小间隔秒数(默认2.0)。调大可降低请求密度、规避风控(code=18)，但会更慢",
+    )
 
     # 在解析之前捕获 -h 的行为
     if len(sys.argv) == 2 and sys.argv[1] in {"-h", "--help"}:
@@ -181,6 +187,8 @@ def load_config_from_file(config_path):
             common_config["force_video_time"] = str_to_bool(common_config["force_video_time"])
         if "replay_finished_video" in common_config:
             common_config["replay_finished_video"] = str_to_bool(common_config["replay_finished_video"])
+        if "request_interval" in common_config:
+            common_config["request_interval"] = float(common_config["request_interval"])
         if "username" in common_config and common_config["username"] is not None:
             common_config["username"] = common_config["username"].strip()
         if "password" in common_config and common_config["password"] is not None:
@@ -216,6 +224,7 @@ def build_config_from_args(args):
         "target_count": args.target_count,
         "force_video_time": args.force_video_time,
         "replay_finished_video": args.replay_finished_video,
+        "request_interval": args.request_interval,
     }
     return common_config, {}, {}
 
@@ -230,6 +239,8 @@ def init_config():
             common_config["force_video_time"] = True
         if args.replay_finished_video:
             common_config["replay_finished_video"] = True
+        if args.request_interval != 2.0:
+            common_config["request_interval"] = args.request_interval
     else:
         common_config, tiku_config, notification_config = build_config_from_args(args)
     return common_config, tiku_config, notification_config, args.config
@@ -287,6 +298,7 @@ def init_chaoxing(common_config, tiku_config, config_path=None):
         work_redo_enabled=work_redo_enabled,
         force_video_time=str_to_bool(common_config.get("force_video_time", False)),
         replay_finished_video=str_to_bool(common_config.get("replay_finished_video", False)),
+        request_interval=float(common_config.get("request_interval", 2.0)),
     )
 
     return chaoxing

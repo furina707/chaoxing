@@ -393,7 +393,10 @@ class Chaoxing:
         # 已看完的课程应正常跳过，避免浪费时间并触发风控。
         self.replay_finished_video = bool(kwargs.get("replay_finished_video", False))
         self.rollback_times = 0
-        self.rate_limiter = RateLimiter(0.5)  # 其他接口速率限制比较松
+        # 请求间隔（秒）：默认放慢以降低整体请求密度，规避超星频率风控(code=18)。
+        # 可用 main.py 的 --request-interval 调整；设小提速但更易触发风控。
+        self.request_interval = float(kwargs.get("request_interval", 2.0))
+        self.rate_limiter = RateLimiter(self.request_interval)
         self.video_log_limiter = RateLimiter(2)  # 上报进度极其容易卡验证码，限制2s一次
 
     def login(self, login_with_cookies=False):
@@ -609,6 +612,7 @@ class Chaoxing:
         _url = f"https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/studentcourse?courseid={_courseid}&clazzid={_clazzid}&cpi={_cpi}&ut=s"
         logger.trace("URL: " + _url)
         logger.trace("开始读取课程所有章节...")
+        self.rate_limiter.limit_rate()   # 章节列表也限速，避免启动时密集请求触发风控
         _resp = _session.get(_url)
 
         logger.trace(f"原始章节列表内容:\n{_resp.text}")
@@ -635,6 +639,8 @@ class Chaoxing:
 
             logger.trace("开始读取章节所有任务点...")
 
+            # 每章最多发 7 次请求，这里也限速，避免密集请求触发频率风控(code=18)
+            self.rate_limiter.limit_rate(random_time=True, random_max=0.3)
             cards_params.update({"num": _possible_num})
             _resp = _session.get("https://mooc1.chaoxing.com/mooc-ans/knowledge/cards", params=cards_params)
             if _resp.status_code != 200:
@@ -895,6 +901,7 @@ class Chaoxing:
 
         headers = gc.VIDEO_HEADERS if _type == "Video" else gc.AUDIO_HEADERS
         _info_url = f"https://mooc1.chaoxing.com/ananas/status/{_job['objectid']}?k={self.get_fid()}&flag=normal"
+        self.rate_limiter.limit_rate()
         _video_info = _session.get(_info_url, headers=headers).json()
 
         if _video_info["status"] != "success":
