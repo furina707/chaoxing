@@ -962,7 +962,11 @@ class Chaoxing:
                             "出现403报错, 正在尝试刷新会话状态 (第{}次)",
                             forbidden_retry,
                         )
-                        time.sleep(random.uniform(2, 4))
+                        # code=18 是频率型风控，短暂重试只会持续触发；
+                        # 等待一个较长的随机冷却期再试，给风控解除的时间。
+                        cooldown = 30 * forbidden_retry + random.uniform(0, 15)
+                        logger.info("风控冷却等待 {:.0f} 秒后重试...", cooldown)
+                        time.sleep(cooldown)
                         refreshed_meta = self._recover_after_forbidden(_session, _job, _type)
                         if refreshed_meta and refreshed_meta.get("dtoken") and refreshed_meta.get(
                                 "duration") is not None:
