@@ -252,10 +252,11 @@ def init_chaoxing(common_config, tiku_config, config_path=None):
     password = common_config.get("password", "")
     use_cookies = common_config.get("use_cookies", False)
 
-    # 如果没有提供用户名密码，从命令行获取
+    # 非交互运行：未提供凭据时直接报错退出，不再等待输入
     if (not username or not password) and not use_cookies:
-        username = input("请输入你的手机号, 按回车确认\n手机号:")
-        password = input("请输入你的密码, 按回车确认\n密码:")
+        raise InputFormatError(
+            "未提供账号密码：请通过 -u/-p 参数或 config.ini 配置，程序不会等待交互输入。"
+        )
 
     account = Account(username, password)
 
@@ -274,12 +275,8 @@ def init_chaoxing(common_config, tiku_config, config_path=None):
         if check_connection:
             logger.info(f'正在验证大模型配置 (provider={provider})...')
             if not tiku.check_llm_connection():
-                logger.error('大模型连接检查失败')
-                choice = input('大模型连接检查失败，无法准确答题，是否继续运行？(Y/n): ').strip().lower()
-                # 直接回车默认继续运行
-                if choice not in ('', 'y', 'yes'):
-                    raise RuntimeError('用户取消运行')
-                logger.info('用户选择继续运行...')
+                # 非交互运行：检查失败仅告警，不再等待用户输入
+                logger.warning('大模型连接检查失败，无法准确答题；非交互模式继续运行')
 
     query_delay = tiku_config.get("delay", 0)
 
